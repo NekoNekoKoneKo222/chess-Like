@@ -110,7 +110,9 @@ export function legalActions(state, unitId) {
     }
   } else if (profile.move === "pawn") {
     const forward = unit.side === "player" ? -1 : 1;
-    tryAdd(unit.x, unit.y + forward);
+    for (let dist = 1; dist <= profile.range; dist++) {
+      if (!tryAdd(unit.x, unit.y + forward * dist)) break;
+    }
     for (const dx of [-1, 1]) tryAdd(unit.x + dx, unit.y + forward, true);
   } else {
     for (const [dx, dy] of directions(profile, unit.side)) {

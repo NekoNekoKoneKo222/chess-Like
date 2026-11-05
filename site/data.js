@@ -49,3 +49,55 @@ export const RARITIES = {
 };
 export const STARTER_COLLECTION = ["王将", "歩兵", "騎士", "衛兵"];
 export const MAX_LINEUP = 8;
+
+// ゲーム中に使用する性能は site/pieces.txt から読み込みます。
+// 既存の駒は必須にして、ステージとセーブデータが壊れないようにします。
+const REQUIRED_NAMES = PIECES.map((p) => p.name);
+const rarityFromText = { "コモン": "common", "レア": "rare", "レジェンダリー": "legendary" };
+const moveFromText = { "隣接": "step", "歩兵": "pawn", "跳躍": "knight", "縦横": "rook", "斜め": "bishop", "全方向": "queen" };
+const traitFromText = { "なし": "", "爆弾": "bomb", "寄生": "parasite", "接近阻止": "repel", "効果無効": "immune", "処刑": "execute" };
+
+export function parsePieces(text) {
+  const result = [];
+  const used = new Set();
+  for (const [index, raw] of String(text).split(/\r?\n/).entries()) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const fields = line.split(",").map((value) => value.trim());
+    if (fields.length !== 10) throw new Error(`${index + 1}行目：10項目を半角カンマで区切ってください。`);
+    const [name, rarityName, hpValue, defenseValue, attackValue, moveName, rangeValue, traitName, glyph, description] = fields;
+    if (!/^[\p{Script=Han}]{1,8}$/u.test(name)) throw new Error(`${index + 1}行目：駒名は漢字1〜8文字にしてください。`);
+    if (used.has(name)) throw new Error(`${index + 1}行目：「${name}」が重複しています。`);
+    if (!Object.hasOwn(rarityFromText, rarityName)) throw new Error(`${index + 1}行目：レア度はコモン・レア・レジェンダリーから選択。`);
+    if (!Object.hasOwn(moveFromText, moveName)) throw new Error(`${index + 1}行目：移動方法が不明です。`);
+    if (!Object.hasOwn(traitFromText, traitName)) throw new Error(`${index + 1}行目：特殊効果が不明です。`);
+    if (!/^[\p{Script=Han}]$/u.test(glyph)) throw new Error(`${index + 1}行目：表示文字は漢字1文字にしてください。`);
+    if (!description) throw new Error(`${index + 1}行目：説明が空です。`);
+    if (![hpValue, defenseValue, attackValue, rangeValue].every((value) => /^\d+$/.test(value))) {
+      throw new Error(`${index + 1}行目：ステータスと距離は0以上の整数を記入してください。`);
+    }
+    const values = [hpValue, defenseValue, attackValue, rangeValue].map(Number);
+    if (values.some((number) => !Number.isSafeInteger(number))) throw new Error(`${index + 1}行目：ステータスと距離は整数にしてください。`);
+    const [hp, defense, attack, range] = values;
+    if (hp < 1 || hp > 9999 || defense < 0 || defense > 9999 || attack < 0 || attack > 9999 || range < 1 || range > 8) {
+      throw new Error(`${index + 1}行目：HPは1〜9999、防御力と攻撃力は0〜9999、距離は1〜8です。`);
+    }
+    if ((moveName === "跳躍" || moveName === "隣接") && range !== 1) {
+      throw new Error(`${index + 1}行目：跳躍と隣接の移動距離は1にしてください。`);
+    }
+    used.add(name);
+    result.push({ name, rarity: rarityFromText[rarityName], glyph, hp, defense, attack, move: moveFromText[moveName], range, description, trait: traitFromText[traitName] });
+  }
+  const missing = REQUIRED_NAMES.filter((name) => !used.has(name));
+  if (missing.length) throw new Error(`必須の駒が不足しています：${missing.join("、")}`);
+  return result;
+}
+
+export function applyPieceText(text) {
+  const parsed = parsePieces(text);
+  // PIECES と PIECE_MAP は参照を保ったまま更新し、game.js に反映します。
+  PIECES.splice(0, PIECES.length, ...parsed);
+  for (const name of Object.keys(PIECE_MAP)) delete PIECE_MAP[name];
+  for (const profile of parsed) PIECE_MAP[profile.name] = profile;
+  return parsed;
+}

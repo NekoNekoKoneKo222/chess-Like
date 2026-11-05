@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { PIECES } from "../site/data.js";
+import { PIECES, PIECE_MAP, applyPieceText, parsePieces } from "../site/data.js";
 import { createRun, parseStages, createUnit, legalActions, takeAction, skipEnemyTurn, rewardOptions, claimReward, startBattle, toggleLineup, chooseEnemyAction } from "../site/game.js";
 
 const stageText = readFileSync(new URL("../site/stages.txt", import.meta.url), "utf8");
+const pieceText = readFileSync(new URL("../site/pieces.txt", import.meta.url), "utf8");
+applyPieceText(pieceText);
 const stages = parseStages(stageText);
 const battle = (...units) => ({ ...createRun(), phase: "battle", turn: "player", units, log: [], selected: null });
 const unit = (name, side, x, y, id = `${side}-${name}`) => createUnit(name, side, x, y, id);
@@ -22,6 +24,36 @@ test("全駒名が漢字だけであり、3段階のレア度がある", () => {
   assert.ok(PIECES.length >= 25);
   assert.ok(PIECES.every((p) => /^[\p{Script=Han}]+$/u.test(p.name)));
   assert.deepEqual([...new Set(PIECES.map((p) => p.rarity))].sort(), ["common", "legendary", "rare"]);
+});
+
+test("駒のHP・防御力・攻撃力・移動方法・レア度・能力をTXTで変更できる", () => {
+  const original = PIECE_MAP["爆弾魔"];
+  const edited = pieceText.replace(
+    "爆弾魔,レア,5,1,2,縦横,2,爆弾,爆,",
+    "爆弾魔,レジェンダリー,19,8,12,全方向,3,効果無効,爆,",
+  );
+  applyPieceText(edited);
+  assert.equal(PIECE_MAP["爆弾魔"].hp, 19);
+  assert.equal(PIECE_MAP["爆弾魔"].defense, 8);
+  assert.equal(PIECE_MAP["爆弾魔"].attack, 12);
+  assert.equal(PIECE_MAP["爆弾魔"].rarity, "legendary");
+  assert.equal(PIECE_MAP["爆弾魔"].move, "queen");
+  assert.equal(PIECE_MAP["爆弾魔"].range, 3);
+  assert.equal(PIECE_MAP["爆弾魔"].trait, "immune");
+  assert.notEqual(PIECE_MAP["爆弾魔"], original);
+  const sample = battle(unit("王将", "player", 4, 7), unit("爆弾魔", "player", 2, 5), unit("歩兵", "enemy", 5, 2));
+  assert.ok(legalActions(sample, "player-爆弾魔").some((a) => a.x === 5 && a.y === 2 && a.kind === "attack"));
+  applyPieceText(pieceText);
+  assert.equal(PIECE_MAP["爆弾魔"].attack, 2);
+});
+
+test("不正な駒設定はエラーになり、既存の設定を壊さない", () => {
+  const before = PIECE_MAP["王将"];
+  assert.throws(() => parsePieces(pieceText.replace("王将,コモン", "王将,特別")), /レア度/);
+  assert.throws(() => parsePieces(pieceText.replace("爆弾魔,レア", "王将,レア")), /重複/);
+  assert.throws(() => parsePieces(pieceText.replace("騎士,コモン,5,1,2,跳躍,1", "騎士,コモン,5,1,2,跳躍,3")), /移動距離/);
+  assert.throws(() => applyPieceText(pieceText.replace("寄生虫,レア", "未定義,レア")), /必須の駒/);
+  assert.equal(PIECE_MAP["王将"], before);
 });
 
 test("防御力を先に削り、残りだけHPが減る", () => {
