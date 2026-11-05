@@ -3,19 +3,11 @@ import { createRun, parseStages, startBattle, toggleLineup, legalActions, takeAc
 
 const app = document.getElementById("app");
 const STORAGE = "chess-like-save-v1";
-const CUSTOM_STAGES = "chess-like-custom-stages-v1";
-const CUSTOM_PIECES = "chess-like-custom-pieces-v1";
 const FORMATION = [[4, 7], [3, 7], [5, 7], [2, 7], [4, 6], [3, 6], [5, 6], [2, 6]];
 let state = createRun();
 let stages = [];
 let busy = false;
 let showHelp = false;
-let showEditor = false;
-let editorText = "";
-let editorError = "";
-let sourceText = "";
-let sourcePiecesText = "";
-let editorMode = "stage";
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const profile = (name) => PIECE_MAP[name];
@@ -173,28 +165,13 @@ function renderHelp() {
   </div></div>`;
 }
 
-function renderEditor() {
-  if (!showEditor) return "";
-  const pieces = editorMode === "pieces";
-  return `<div class="overlay" role="dialog" aria-modal="true" aria-label="${pieces ? "駒性能編集" : "ステージ編集"}"><div class="modal-window editor-window"><button type="button" class="close-button" id="close-editor" aria-label="閉じる">×</button>
-    <div class="eyebrow">${pieces ? "PIECE DATA" : "STAGE DATA"}</div><h2>${pieces ? "駒の性能をTXTで編集" : "ステージのTXT編集"}</h2>
-    <p class="muted">${pieces
-      ? "リポジトリの <code>site/pieces.txt</code> を編集するか、下のTXTを調整してください。各行は <code>名前,レア度,HP,防御力,攻撃力,移動方法,距離,特殊効果,表示文字,説明</code> です。移動や特殊効果の選択肢はTXT冒頭のコメントを参照してください。"
-      : "リポジトリの <code>site/stages.txt</code> を編集するか、ここにTXTを貼り付けて適用できます。行は <code>駒名,x,y</code>、見出しは <code>@1|名前|説明</code> です。"}</p>
-    <textarea id="stage-textarea" spellcheck="false" aria-label="${pieces ? "駒性能" : "ステージ"}TXT">${escapeHtml(editorText)}</textarea>
-    ${editorError ? `<p class="editor-error">${escapeHtml(editorError)}</p>` : ""}
-    <div class="editor-buttons"><button class="secondary-button" id="reset-editor">標準設定に戻す</button><button class="primary-button" id="apply-editor">TXTを適用</button></div>
-    <p class="tiny-note">適用したTXTはこのブラウザに保存されます。${pieces ? "既存の駒のHP・防御力は次の戦闘開始時に新数値で回復します。" : "次の戦闘開始時に反映されます。"}全員向けの変更はGitHub上のTXTを編集してください。</p>
-  </div></div>`;
-}
-
 function render() {
   const stage = stages[state.stage - 1];
   if (!stage) return;
   const currentBattle = state.phase === "battle";
   app.innerHTML = `<div class="site-wrap">
     <header class="header"><div class="brand"><span class="brand-icon">♞</span><div><strong>CHESS<span>LIKE</span></strong><small>TACTICAL ROGUELIKE</small></div></div>
-      <nav class="nav-actions"><button type="button" class="nav-button" id="open-pieces">駒性能</button><button type="button" class="nav-button" id="open-editor">ステージ編集</button><button type="button" class="nav-button" id="open-help">遊び方 <span class="nav-question">?</span></button></nav>
+      <nav class="nav-actions"><button type="button" class="nav-button" id="open-help">遊び方 <span class="nav-question">?</span></button></nav>
     </header>
     <main><section class="game-heading"><div class="heading-copy"><div class="eyebrow"><span class="gold-line"></span> THE FIFTEEN CHAPTERS</div>
       <h1>盤上の、<em>生存戦略。</em></h1><p>駒を集め、戦術を築き、15局の戦いを生き残れ。</p></div>
@@ -205,7 +182,7 @@ function render() {
     <div class="battle-layout"><div class="board-column">${renderBoard()}<div class="board-caption"><span><i class="legend-dot ally"></i> 自軍</span><span><i class="legend-dot hostile"></i> 敵軍</span><span><i class="legend-dot possibility"></i> 移動可能</span><span><i class="legend-dot attack"></i> 攻撃可能</span></div></div>
     <aside class="side-column">${renderInfo()}<div class="side-footer"><span>駒の所持数 <strong>${state.collection.length} / ${PIECES.length}</strong></span><span>総手数 <strong>${state.moves}</strong></span></div></aside></div>
     </main><footer class="footer"><span>CHESS LIKE / ROGUELIKE CHESS EXPEDITION</span><span>攻めるか、守るか。次の一手で未来は変わる。</span></footer>
-  </div>${renderReward()}${renderEnding()}${renderHelp()}${renderEditor()}`;
+  </div>${renderReward()}${renderEnding()}${renderHelp()}`;
   bindEvents();
 }
 
@@ -251,34 +228,6 @@ function bindEvents() {
   app.querySelector("#open-help")?.addEventListener("click", () => { showHelp = true; render(); });
   app.querySelector("#close-help")?.addEventListener("click", () => { showHelp = false; render(); });
   app.querySelector("#close-help-bottom")?.addEventListener("click", () => { showHelp = false; render(); });
-  app.querySelector("#open-editor")?.addEventListener("click", () => { editorMode = "stage"; editorText = localStorage.getItem(CUSTOM_STAGES) || sourceText; editorError = ""; showEditor = true; render(); });
-  app.querySelector("#open-pieces")?.addEventListener("click", () => { editorMode = "pieces"; editorText = localStorage.getItem(CUSTOM_PIECES) || sourcePiecesText; editorError = ""; showEditor = true; render(); });
-  app.querySelector("#close-editor")?.addEventListener("click", () => { showEditor = false; render(); });
-  app.querySelector("#stage-textarea")?.addEventListener("input", (e) => { editorText = e.target.value; });
-  app.querySelector("#apply-editor")?.addEventListener("click", () => {
-    try {
-      if (editorMode === "pieces") {
-        applyPieceText(editorText);
-        localStorage.setItem(CUSTOM_PIECES, editorText);
-      } else {
-        stages = parseStages(editorText);
-        localStorage.setItem(CUSTOM_STAGES, editorText);
-      }
-      showEditor = false; editorError = ""; render();
-    } catch (e) { editorError = e.message; render(); }
-  });
-  app.querySelector("#reset-editor")?.addEventListener("click", () => {
-    if (editorMode === "pieces") {
-      localStorage.removeItem(CUSTOM_PIECES);
-      editorText = sourcePiecesText;
-      applyPieceText(sourcePiecesText);
-    } else {
-      localStorage.removeItem(CUSTOM_STAGES);
-      editorText = sourceText;
-      stages = parseStages(sourceText);
-    }
-    editorError = ""; showEditor = false; render();
-  });
 }
 
 async function init() {
@@ -287,13 +236,8 @@ async function init() {
       fetch("./stages.txt", { cache: "no-store" }), fetch("./pieces.txt", { cache: "no-store" }),
     ]);
     if (!response.ok || !pieceResponse.ok) throw new Error(`TXTを取得できません (ステージ ${response.status} / 駒 ${pieceResponse.status})`);
-    sourceText = await response.text();
-    sourcePiecesText = await pieceResponse.text();
-    try { applyPieceText(localStorage.getItem(CUSTOM_PIECES) || sourcePiecesText); }
-    catch { localStorage.removeItem(CUSTOM_PIECES); applyPieceText(sourcePiecesText); }
-    const custom = localStorage.getItem(CUSTOM_STAGES);
-    try { stages = parseStages(custom || sourceText); }
-    catch { localStorage.removeItem(CUSTOM_STAGES); stages = parseStages(sourceText); }
+    applyPieceText(await pieceResponse.text());
+    stages = parseStages(await response.text());
     load();
     render();
     if (state.phase === "battle" && state.turn === "enemy") { busy = true; window.setTimeout(enemyMove, 550); }

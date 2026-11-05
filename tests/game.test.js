@@ -11,6 +11,13 @@ const stages = parseStages(stageText);
 const battle = (...units) => ({ ...createRun(), phase: "battle", turn: "player", units, log: [], selected: null });
 const unit = (name, side, x, y, id = `${side}-${name}`) => createUnit(name, side, x, y, id);
 
+test("ゲーム画面からTXTの編集機能を撤去し、公式TXTだけを読み込む", () => {
+  const main = readFileSync(new URL("../site/main.js", import.meta.url), "utf8");
+  assert.doesNotMatch(main, /open-editor|open-pieces|stage-textarea|apply-editor|renderEditor|CUSTOM_STAGES|CUSTOM_PIECES/);
+  assert.match(main, /applyPieceText\(await pieceResponse\.text\(\)\)/);
+  assert.match(main, /parseStages\(await response\.text\(\)\)/);
+});
+
 test("15ステージと敵配置はすべてTXTから読み込める", () => {
   assert.equal(stages.length, 15);
   assert.equal(stages[0].enemies.length, 2);
