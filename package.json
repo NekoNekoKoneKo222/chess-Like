@@ -1,0 +1,10 @@
+{
+  "name": "chess-like",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check site/main.js && node --check site/game.js && node --check site/data.js"
+  }
+}
